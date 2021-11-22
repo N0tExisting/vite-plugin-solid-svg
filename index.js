@@ -4,41 +4,22 @@ const fg = require("fast-glob");
 const { readFile } = require("fs/promises");
 const { optimize, loadConfig } = require("svgo");
 const { URL } = require("url");
-const { transformAsync } = require("@babel/core");
-const solid = require("babel-preset-solid");
 
 /**
  * @param {string} source The svg source
- * @param {{id: string, root: string}} files The svg source
  * @returns {string} A .js file that exports the svg as a component
  */
-async function compileSvg(source, files) {
-  //* Stolen from https://github.com/antfu/unplugin-icons/blob/main/src/core/compilers/solid.ts#L4
-  const svgWithProps = source
-    .trim()
-    .replace(/([{}])/g, "{'$1'}")
-    .replace(/(?<=<svg.*?)(>)/i, "{...props}>");
-  const raw = `
-export default (props = {}) => {
-  return (<>${svgWithProps}</>)
-}
-`;
 
-  /** @type {import('@babel/core').TransformOptions} */
-  const opts = {
-    babelrc: false,
-    configFile: false,
-    root: files.root,
-    filename: files.id,
-    sourceFileName: files.id,
-    presets: [solid],
-    sourceMaps: true,
-    // Vite handles sourcemap flattening
-    inputSourceMap: false,
+function compileSvg(source) {
+  return `
+  import { template, spread } from "solid-js/web";
+  const _tmpl$ = template(\`${source}\`, 0);
+  export default (props = {}) => {
+    const _el$ = _tmpl$.cloneNode(true);
+    spread(_el$, props, true);
+    return _el$;
   };
-  const { code, map } = await transformAsync(raw, opts);
-
-  return { code, map };
+  `;
 }
 
 async function optimizeSvg(content, path) {
@@ -123,6 +104,7 @@ module.exports = (options = {}) => {
       const type = data.mode;
 
       if (data.dir) {
+        // TODO: Fix #2, Dont rely on the regex!
         const pattern = id.replace(svgRegex, "*.svg");
         const files = fg.sync(pattern);
         const regex = new RegExp(id.replace(svgRegex, "(.*)\\.svg"));
